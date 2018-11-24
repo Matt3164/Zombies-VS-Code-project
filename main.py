@@ -1,9 +1,5 @@
-from main import game_state, input_dict
-from pyzombies.agents.a_bit_smarter_allan import A_Bit_Smarter_Allan
-from pyzombies.agents.allan import Allan
-from pyzombies.environment.sensor import input_from_std, start_game_from_dict
-
-game_state = None
+game_state=None
+input_dict = input_from_std()
 
 while True:
 
@@ -19,23 +15,3 @@ while True:
     action = allan.decide(game_state)
 
     action.execute()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
