@@ -36,14 +36,19 @@ if __name__ == '__main__':
         "agents/zombie.py",
         "agents/human.py",
         "agents/action.py",
+        "environment/key_figures.py",
         "environment/game_state.py",
         "environment/zvh_game_state.py",
-        "agents/allan.py",
-        "agents/safe_allan.py",
-        "agents/a_bit_smarter_allan.py",
         "strategies/strategy.py",
         "strategies/dumb.py",
         "strategies/safe.py",
+        "strategies/zh_strategy.py",
+        "strategies/closest_zombie_strategy.py",
+        "strategies/max_zombie_strategy.py",
+        "strategies/smart_strategy.py",
+        "agents/allan.py",
+        "agents/safe_allan.py",
+        "agents/a_bit_smarter_allan.py",
         "environment/sensor.py",
     ]
 
@@ -89,7 +94,16 @@ if __name__ == '__main__':
 
         with open(os.path.join(current_dir, main_file), "r") as f_src:
 
-            src_content = f_src.read()
+            src_content = str()
+
+            for line in f_src.readlines():
+
+                first_word = line.split(' ')[0]
+
+                if not (first_word in ["import", "from"]):
+                    src_content += line
+                elif "needed" in line:
+                    src_content += line
 
             f_target.write("\n")
 

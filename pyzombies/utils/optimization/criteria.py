@@ -1,4 +1,5 @@
 from typing import List
+from pyzombies.utils.logger import logger
 
 class Criteria(object):
     """"""
@@ -28,6 +29,8 @@ class Criteria(object):
     def filter(self, data_list: List)->List:
 
         values_list = self.extract_field_value_list(data_list)
+
+        logger.info("Values for field {0}: {1}".format(self.field_name, list(set(values_list))))
 
         target_value = self._get_optimum_value(values_list)
 

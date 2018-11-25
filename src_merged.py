@@ -60,6 +60,8 @@ class Criteria(object):
 
         values_list = self.extract_field_value_list(data_list)
 
+        logger.info("Values for field {0}: {1}".format(self.field_name, list(set(values_list))))
+
         target_value = self._get_optimum_value(values_list)
 
         return list(
@@ -134,6 +136,13 @@ class Ordered_Multi_Criteria_Optimizer(object):
 
         candidates = data_list
 
+        logger.info("Candidates")
+
+        for candidate in candidates:
+            logger.info(candidate)
+
+        logger.info("I have {}".format(len(candidates)))
+
         final_criteria = self._criteria_list[-1]
 
         criterias = self._criteria_list[:-1]
@@ -141,6 +150,8 @@ class Ordered_Multi_Criteria_Optimizer(object):
         for criteria in criterias:
 
             candidates = criteria.filter(candidates)
+
+            logger.info("Remaining candidates {}".format(len(candidates)))
 
             if len(candidates)==1:
                 break
@@ -263,6 +274,12 @@ class Action(object):
     def __repr__(self) -> str:
         return "Action associated with {}".format(self._position)
 #----------------------------------------------------------------------------------------------------
+# ------------------------- environment/key_figures.py ------------------------- 
+
+
+HEIGHT = 9000
+WIDTH = 16000
+#----------------------------------------------------------------------------------------------------
 # ------------------------- environment/game_state.py ------------------------- 
 from typing import List, Dict # needed
 
@@ -375,6 +392,250 @@ class Game_State(object):
 # ------------------------- environment/zvh_game_state.py ------------------------- 
 
 #----------------------------------------------------------------------------------------------------
+# ------------------------- strategies/strategy.py ------------------------- 
+
+class Strategy(object):
+    """"""
+
+    def __init__(self):
+        """Constructor for Strategy"""
+        pass
+
+    def choose_from_env(self, game_state: Game_State)->Action:
+        raise NotImplementedError
+
+
+#----------------------------------------------------------------------------------------------------
+# ------------------------- strategies/dumb.py ------------------------- 
+import random # needed
+
+
+class Dumb_Strategy(Strategy):
+    """"""
+
+    def choose_from_env(self, game_state: Game_State) -> Action:
+
+        random_position = Position(
+            random.randint(0, WIDTH),
+            random.randint(0, HEIGHT)
+        )
+
+        return Action( position=random_position )
+
+#----------------------------------------------------------------------------------------------------
+# ------------------------- strategies/safe.py ------------------------- 
+
+class Safe_Strategy(Strategy):
+    """"""
+
+    def choose_from_env(self, game_state: Game_State) -> Action:
+        dbt = game_state.distance_between_types()
+
+        possible_actions = list()
+
+        for human in dbt.keys():
+
+            distances_to_zombie = [dbt[human][zombie] for zombie in dbt[human].keys()]
+
+            min_distance = min(distances_to_zombie)
+
+            zombie_idx = distances_to_zombie.index(min_distance)
+
+            closest_zombie = list(dbt[human].keys())[zombie_idx]
+
+            possible_actions.append(
+                dict(distance_to_human=min_distance, zombie=closest_zombie)
+            )
+
+        opt = Ordered_Multi_Criteria_Optimizer(
+            criteria_list=[
+                criteria_factory('distance_to_human', "min")
+            ]
+        )
+
+        selected_action = opt.find(possible_actions)
+
+        closest_zombie = selected_action["zombie"]
+
+        return Action(closest_zombie.position)
+
+
+
+#----------------------------------------------------------------------------------------------------
+# ------------------------- strategies/zh_strategy.py ------------------------- 
+
+class ZH_Strategy(Strategy):
+    """"""
+
+    def choose_if_humans(self, game_state: Game_State):
+        raise NotImplementedError
+
+    def choose_if_not_humans(self, game_state: Game_State):
+        raise NotImplementedError
+
+    def choose_from_env(self, game_state: Game_State) -> Action:
+        person_map = game_state.by_type()
+
+        if len(person_map["human"]) > 0:
+            return self.choose_if_humans(game_state)
+        else:
+            return self.choose_if_not_humans(game_state)
+
+
+
+#----------------------------------------------------------------------------------------------------
+# ------------------------- strategies/closest_zombie_strategy.py ------------------------- 
+
+class Closest_Zombie_Strategy(ZH_Strategy):
+    """"""
+
+    def choose_if_not_humans(self, game_state: Game_State):
+        zombies = game_state.by_type()["zombie"]
+
+        allan = game_state._get_allan()
+
+        distances = list()
+        for zombie in zombies:
+            distances.append(l2_distance_btw_persons(allan, zombie))
+
+        min_dist = min(distances)
+
+        targeted_zombie = zombies[distances.index(min_dist)]
+
+        return Action(targeted_zombie.position)
+
+
+
+#----------------------------------------------------------------------------------------------------
+# ------------------------- strategies/max_zombie_strategy.py ------------------------- 
+
+class Max_Zombie_Strategy(Closest_Zombie_Strategy):
+    """"""
+
+    def choose_if_humans(self, game_state: Game_State):
+
+        zombies = game_state.by_type()["zombie"]
+
+        humans = game_state.by_type()["human"]
+
+        possible_actions = dict()
+
+        for zombie in zombies:
+
+            position = zombie.position
+
+            new_action = Action(zombie.position)
+
+            closest_human_distance = min([l2_distance_btw_persons(zombie, human) for human in humans])
+
+            if not (position in possible_actions.keys()):
+
+                possible_actions[position] = dict(
+                    action=new_action,
+                    zombie_killed=1,
+                    closest_human_to_zombie=closest_human_distance
+                )
+
+            else:
+
+                possible_actions[position]["zombie_killed"] += 1
+                possible_actions[position]["closest_human_to_zombie"] = min(
+                    possible_actions[position]["closest_human_to_zombie"],
+                    closest_human_distance
+                )
+
+        opt = Ordered_Multi_Criteria_Optimizer(
+            criteria_list=[
+                criteria_factory('zombie_killed', "max"),
+                criteria_factory('closest_human_to_zombie', "min")
+            ]
+        )
+
+        selected_action = opt.find([item[1] for item in possible_actions.items()])
+
+        return selected_action["action"]
+
+
+
+#----------------------------------------------------------------------------------------------------
+# ------------------------- strategies/smart_strategy.py ------------------------- 
+
+class Smart_Strategy(Closest_Zombie_Strategy):
+    """"""
+
+    def choose_if_humans(self, game_state: Game_State):
+
+        zombies = game_state.by_type()["zombie"]
+
+        humans = game_state.by_type()["human"]
+
+        victim_humans = [human for human in humans if human.id!="allan"]
+
+        allan = game_state._get_allan()
+
+        possible_actions = dict()
+
+        for zombie in zombies:
+
+            position = zombie.position
+
+            new_action = Action(zombie.position)
+
+            closest_human_distance = min([l2_distance_btw_persons(zombie, human) for human in victim_humans])
+
+            closest_human_distance_in_turns = int( (closest_human_distance- zombie.attack_radius )/zombie.velocity)
+
+            if not (position in possible_actions.keys()):
+
+                allan_distance = l2_distance_btw_persons(zombie, allan)
+
+                allan_distance_in_turns = int(( allan_distance - allan.attack_radius) /allan.velocity)
+
+                is_possible=int( ( allan_distance_in_turns - 1) <= closest_human_distance_in_turns )
+
+                possible_actions[position] = dict(
+                    action=new_action,
+                    zombie_killed=1,
+                    closest_human_to_zombie=closest_human_distance,
+                    allan_distance=allan_distance,
+                    closest_human_distance=closest_human_distance,
+                    closest_human_distance_in_turns=closest_human_distance_in_turns,
+                    allan_distance_in_turns=allan_distance_in_turns,
+                    is_possible=is_possible
+                )
+
+            else:
+
+                possible_actions[position]["zombie_killed"] += 1
+                possible_actions[position]["closest_human_to_zombie"] = min(
+                    possible_actions[position]["closest_human_to_zombie"],
+                    closest_human_distance
+                )
+                possible_actions[position]["closest_human_distance_in_turns"] = min(
+                    possible_actions[position]["closest_human_distance_in_turns"],
+                    closest_human_distance
+                )
+
+                possible_actions[position]["is_possible"] = int(
+                    possible_actions[position]["allan_distance_in_turns"] < possible_actions[position]["closest_human_distance_in_turns"]
+                )
+
+        opt = Ordered_Multi_Criteria_Optimizer(
+            criteria_list=[
+                criteria_factory('is_possible', "max"),
+                criteria_factory('closest_human_distance_in_turns', "min"),
+                criteria_factory('zombie_killed', "max"),
+                criteria_factory('closest_human_distance', "min"),
+            ]
+        )
+
+        selected_action = opt.find([item[1] for item in possible_actions.items()])
+
+        return selected_action["action"]
+
+
+
+#----------------------------------------------------------------------------------------------------
 # ------------------------- agents/allan.py ------------------------- 
 
 
@@ -387,6 +648,11 @@ class Allan(Human):
 
     def decide(self, game_state: Game_State)-> Action:
         raise NotImplementedError
+
+    def use_strategy(self, game_state: Game_State, strategy: Strategy)->Action:
+        return strategy.choose_from_env(game_state)
+
+
 #----------------------------------------------------------------------------------------------------
 # ------------------------- agents/safe_allan.py ------------------------- 
 
@@ -514,15 +780,6 @@ class A_Bit_Smarter_Allan(Allan):
         else:
             return self.decide_if_not_humans(game_state)
 #----------------------------------------------------------------------------------------------------
-# ------------------------- strategies/strategy.py ------------------------- 
-
-#----------------------------------------------------------------------------------------------------
-# ------------------------- strategies/dumb.py ------------------------- 
-
-#----------------------------------------------------------------------------------------------------
-# ------------------------- strategies/safe.py ------------------------- 
-
-#----------------------------------------------------------------------------------------------------
 # ------------------------- environment/sensor.py ------------------------- 
 
 
@@ -588,10 +845,13 @@ def start_game_from_dict(input_dict, allan_class=Allan):
     return Game_State(persons + [allan])
 #----------------------------------------------------------------------------------------------------
 # ------------------------- main.py ------------------------- 
+
+
 game_state=None
-input_dict = input_from_std()
 
 while True:
+
+    input_dict = input_from_std()
 
     if game_state is None:
         game_state = start_game_from_dict(input_dict, A_Bit_Smarter_Allan)
@@ -602,6 +862,8 @@ while True:
 
     assert isinstance(allan, Allan)
 
-    action = allan.decide(game_state)
+    # action = allan.decide(game_state)
+
+    action = allan.use_strategy(game_state, Smart_Strategy())
 
     action.execute()

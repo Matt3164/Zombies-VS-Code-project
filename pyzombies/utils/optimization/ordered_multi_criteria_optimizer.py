@@ -1,5 +1,6 @@
 from pyzombies.utils.optimization.criteria import Criteria
 from typing import List
+from pyzombies.utils.logger import logger
 
 
 class Ordered_Multi_Criteria_Optimizer(object):
@@ -14,6 +15,13 @@ class Ordered_Multi_Criteria_Optimizer(object):
 
         candidates = data_list
 
+        logger.info("Candidates")
+
+        for candidate in candidates:
+            logger.info(candidate)
+
+        logger.info("I have {}".format(len(candidates)))
+
         final_criteria = self._criteria_list[-1]
 
         criterias = self._criteria_list[:-1]
@@ -21,6 +29,8 @@ class Ordered_Multi_Criteria_Optimizer(object):
         for criteria in criterias:
 
             candidates = criteria.filter(candidates)
+
+            logger.info("Remaining candidates {}".format(len(candidates)))
 
             if len(candidates)==1:
                 break
